@@ -1,0 +1,4 @@
+# Dependencias do gerador do relatorio (Python 3.12+)
+pandas>=2.2
+numpy>=1.26
+Jinja2>=3.1

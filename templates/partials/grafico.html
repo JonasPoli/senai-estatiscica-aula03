@@ -1,0 +1,64 @@
+{#
+  Cartão de gráfico e utilidades de apoio.
+
+  A marcação de `cartao_grafico` segue exatamente o contrato do motor de
+  gráficos: a faixa `.grafico__stats` e a tabela dentro de `details` são
+  preenchidas pelo JavaScript a partir do JSON embutido na página, por isso
+  saem daqui vazias.
+#}
+
+{% macro cartao_grafico(g) -%}
+<figure class="grafico" id="card-{{ g.id }}" data-grafico="{{ g.id }}" data-tipo="{{ g.tipo }}" data-altura="{{ g.get('altura') or 340 }}">
+  <figcaption class="grafico__cab">
+    <h3 class="grafico__titulo">{{ g.titulo }}</h3>
+    {% if g.get('subtitulo') %}
+    <p class="grafico__subtitulo">{{ g.subtitulo }}</p>
+    {% endif %}
+  </figcaption>
+  <div class="grafico__tela" id="g-{{ g.id }}" role="img" aria-label="Gráfico do tipo {{ g.tipo | replace('-', ' ') }}: {{ g.titulo }}.{% if g.get('subtitulo') %} {{ g.subtitulo }}.{% endif %}{% if g.get('leitura') %} {{ g.leitura }}{% endif %} Os valores exatos estão na tabela de dados que acompanha o cartão."></div>
+  <div class="grafico__stats"></div>
+  {% if g.get('leitura') %}
+  <p class="grafico__leitura">{{ g.leitura }}</p>
+  {% endif %}
+  <details class="grafico__tabela">
+    <summary>Ver tabela de dados</summary>
+  </details>
+</figure>
+{%- endmacro %}
+
+
+{#
+  Grade de cartões de uma seção. Recebe a lista já filtrada por seção
+  (`graficos_por_secao.get('...', [])`).
+#}
+{% macro grade_graficos(lista) -%}
+{% if lista %}
+<div class="graficos">
+  {% for g in lista %}
+  {{ cartao_grafico(g) }}
+  {% endfor %}
+</div>
+{% else %}
+<p class="secao__aviso">Nenhum gráfico foi gerado para esta seção.</p>
+{% endif %}
+{%- endmacro %}
+
+
+{#
+  Nota de leitura dos marcadores estatísticos desenhados sobre os gráficos.
+  Repetida em todas as seções de gráficos para que a página possa ser lida
+  a partir de qualquer ponto.
+#}
+{% macro nota_marcadores() -%}
+<p class="secao__nota">
+  Convenção dos marcadores em todos os gráficos: a <strong>média</strong> aparece
+  como linha <strong>tracejada</strong>, a <strong>mediana</strong> como linha
+  <strong>pontilhada</strong>, a <strong>moda</strong> como linha
+  <strong>sólida fina</strong> e os quartis <strong>Q1 e Q3</strong> como linhas de
+  <strong>traço curto</strong> em cinza; a área sombreada, quando presente, cobre a
+  faixa de um desvio-padrão em torno da média. A faixa de indicadores abaixo de cada
+  gráfico repete média, mediana, moda, variância, desvio-padrão, Q1, Q3, IQR e
+  coeficiente de variação, e o botão <em>Ver tabela de dados</em> abre os valores
+  exatos que originaram as marcas.
+</p>
+{%- endmacro %}

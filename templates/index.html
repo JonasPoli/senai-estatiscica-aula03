@@ -1,0 +1,671 @@
+{% extends "base.html" %}
+{% from "partials/grafico.html" import cartao_grafico, grade_graficos, nota_marcadores %}
+{% from "partials/tabelas.html" import num_fmt, tabela_descritivas, tabela_forma, tabela_recorte %}
+
+{#
+  Relatório de página única. Cada seção abaixo corresponde a uma entrada de
+  `contexto.secoes`, na mesma ordem, e os cartões de gráfico vêm de
+  `graficos_por_secao`, filtrados pela chave `secao` de cada gráfico.
+#}
+
+{% block conteudo %}
+
+{# ------------------------------------------------------------ 1. visão geral #}
+<section class="secao secao--destaque" id="visao-geral" aria-labelledby="titulo-visao-geral">
+  <h2 class="secao__titulo" id="titulo-visao-geral">1. Visão geral</h2>
+  <p class="secao__texto">
+    Esta seção resume, em um único painel, o desempenho da produção da EletroTech
+    Solutions S.A. no período de {{ analise.meta.periodo_inicio | data_br }} a
+    {{ analise.meta.periodo_fim | data_br }}, apurado sobre
+    {{ analise.meta.n_registros | int_br }} registros diários de produção e
+    {{ analise.meta.n_variaveis | int_br }} variáveis. Os indicadores abaixo são
+    agregados do conjunto completo: volumes e horas são somas, taxas de defeito e
+    produtividade são razões entre os totais do período (nunca médias de razões), de
+    modo que registros com volumes diferentes não distorcem o resultado.
+  </p>
+  <p class="secao__texto">
+    Cada número desta visão geral é reaberto nas seções seguintes: a seção 3 traz as
+    medidas descritivas completas, as seções 4 a 10 trazem a evidência gráfica e a
+    seção 11 responde às seis questões investigativas propostas no enunciado.
+  </p>
+
+  <h3 class="secao__subtitulo">Indicadores-chave do período</h3>
+  <ul class="kpis" aria-label="Indicadores-chave do período">
+    {% for k in analise.kpis %}
+    <li class="kpi{% if k.get('status') %} kpi--{{ k.status }}{% endif %}" id="kpi-{{ k.id }}">
+      <p class="kpi__rotulo">{{ k.rotulo }}</p>
+      <p class="kpi__valor">
+        {{ num_fmt(k.valor, k.formato) }}{% if k.get('unidade') and k.formato != 'pct' %}<span class="kpi__unidade"> {{ k.unidade }}</span>{% endif %}
+      </p>
+      {% if k.get('nota') %}
+      <p class="kpi__nota">{{ k.nota }}</p>
+      {% endif %}
+      {% if k.get('status') %}
+      <p class="kpi__status">Situação: {{ k.status | replace('atencao', 'atenção') }}</p>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+
+  <h3 class="secao__subtitulo">Síntese do parecer</h3>
+  <div class="bloco bloco--sintese">
+    <p class="bloco__texto">{{ analise.parecer.sintese }}</p>
+  </div>
+
+  {% set g_visao = graficos_por_secao.get('visao-geral', []) %}
+  {% if g_visao %}
+  <h3 class="secao__subtitulo">Panorama gráfico</h3>
+  {{ nota_marcadores() }}
+  {{ grade_graficos(g_visao) }}
+  {% endif %}
+</section>
+
+
+{# -------------------------------------------------- 2. população e amostra #}
+<section class="secao" id="populacao" aria-labelledby="titulo-populacao">
+  <h2 class="secao__titulo" id="titulo-populacao">2. População, amostra e variáveis</h2>
+  <p class="secao__texto">
+    Antes de qualquer cálculo é preciso delimitar o que está sendo medido e sobre quem.
+    Esta seção define a população de interesse, a unidade de análise, a amostra
+    efetivamente disponível e a técnica de amostragem implícita na base, e em seguida
+    classifica as {{ analise.meta.n_variaveis | int_br }} variáveis por tipo — a
+    classificação determina quais medidas estatísticas são admissíveis em cada caso.
+  </p>
+
+  <div class="definicoes">
+    <article class="definicao">
+      <h3 class="definicao__titulo">População</h3>
+      <p class="definicao__texto">{{ analise.populacao.populacao }}</p>
+    </article>
+    <article class="definicao">
+      <h3 class="definicao__titulo">Unidade de análise</h3>
+      <p class="definicao__texto">{{ analise.populacao.unidade_analise }}</p>
+    </article>
+    <article class="definicao">
+      <h3 class="definicao__titulo">Amostra</h3>
+      <p class="definicao__texto">{{ analise.populacao.amostra }}</p>
+    </article>
+    <article class="definicao">
+      <h3 class="definicao__titulo">Técnica de amostragem</h3>
+      <p class="definicao__texto">{{ analise.populacao.tecnica_amostragem }}</p>
+    </article>
+  </div>
+
+  <h3 class="secao__subtitulo">Classificação das variáveis por tipo</h3>
+  <p class="secao__texto">
+    Variáveis qualitativas nominais admitem moda e tabelas de frequência, mas não média;
+    variáveis quantitativas discretas e contínuas admitem todas as medidas de posição e
+    dispersão; a variável temporal organiza a série e sustenta as análises de tendência
+    da seção 5.
+  </p>
+  {% set tipos_variaveis = [
+       ('qualitativas_nominais', 'Qualitativas nominais', 'Categorias sem ordem natural. Medidas válidas: frequência, proporção e moda.'),
+       ('quantitativas_discretas', 'Quantitativas discretas', 'Contagens inteiras. Admitem todas as medidas de posição e dispersão.'),
+       ('quantitativas_continuas', 'Quantitativas contínuas', 'Medições em escala contínua. Admitem todas as medidas, inclusive quartis e assimetria.'),
+       ('temporais', 'Temporais', 'Marcam a posição do registro no tempo e permitem agregação por mês.')
+     ] %}
+  <div class="tabela-rolagem" role="region" aria-label="Tabela de variáveis por tipo" tabindex="0">
+    <table class="tabela" id="tabela-variaveis">
+      <caption class="tabela__legenda">
+        Variáveis da base agrupadas por tipo estatístico, com as medidas admissíveis
+        em cada grupo.
+      </caption>
+      <thead>
+        <tr>
+          <th scope="col">Tipo</th>
+          <th scope="col">Quantidade</th>
+          <th scope="col">Variáveis</th>
+          <th scope="col">Medidas admissíveis</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for chave, nome, explicacao in tipos_variaveis %}
+        {% set lista = analise.populacao.variaveis_por_tipo.get(chave, []) %}
+        <tr>
+          <th scope="row">{{ nome }}</th>
+          <td class="num">{{ lista | length | int_br }}</td>
+          <td>
+            <ul class="lista lista--compacta">
+              {% for v in lista %}
+              <li>{{ rotulos.get(v, v) }}{% if unidades.get(v) %} <span class="unidade">({{ unidades.get(v) }})</span>{% endif %}</li>
+              {% endfor %}
+            </ul>
+          </td>
+          <td>{{ explicacao }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <h3 class="secao__subtitulo">Qualidade da base e valores faltantes</h3>
+  <p class="secao__texto">
+    A base apresenta {{ analise.meta.total_faltantes | int_br }} células vazias, mas é
+    preciso distinguir dois casos. A coluna <em>Ordem do atípico</em> está vazia em
+    {{ analise.meta.faltantes.get('ordem_atipico', 0) | int_br }} registros
+    <strong>por construção</strong>: ela só é preenchida nos registros marcados como
+    atípicos de energia, de modo que o vazio ali é informação, não perda de dado.
+    Descontada essa coluna, restam
+    {{ (analise.meta.total_faltantes - analise.meta.faltantes.get('ordem_atipico', 0)) | int_br }}
+    medições efetivamente ausentes. Todos os cálculos deste relatório descartam os
+    valores faltantes variável por variável (exclusão por par, não por registro
+    inteiro), razão pela qual a coluna <em>n</em> da seção 3 varia entre as variáveis.
+  </p>
+  {% if analise.meta.faltantes %}
+  <div class="tabela-rolagem" role="region" aria-label="Tabela de valores faltantes por variável" tabindex="0">
+    <table class="tabela" id="tabela-faltantes">
+      <caption class="tabela__legenda">
+        Valores faltantes por variável, em número de registros e em proporção dos
+        {{ analise.meta.n_registros | int_br }} registros da base.
+      </caption>
+      <thead>
+        <tr>
+          <th scope="col">Variável</th>
+          <th scope="col">Faltantes</th>
+          <th scope="col">Proporção</th>
+          <th scope="col">Natureza do vazio</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for coluna, qtd in analise.meta.faltantes.items() %}
+        <tr>
+          <th scope="row">{{ rotulos.get(coluna, coluna) }}</th>
+          <td class="num">{{ qtd | int_br }}</td>
+          <td class="num">{{ (qtd / analise.meta.n_registros) | pct(1) }}</td>
+          <td>
+            {% if coluna == 'ordem_atipico' %}
+            Vazio por construção: a coluna só é preenchida nos registros atípicos.
+            {% else %}
+            Medição ausente, descartada no cálculo desta variável.
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</section>
+
+
+{# ----------------------------------------------------- 3. medidas descritivas #}
+<section class="secao" id="descritivas" aria-labelledby="titulo-descritivas">
+  <h2 class="secao__titulo" id="titulo-descritivas">3. Medidas descritivas</h2>
+  <p class="secao__texto">
+    Esta seção reúne o conjunto completo de medidas de posição, dispersão, precisão e
+    forma para cada variável quantitativa da base. A leitura recomendada é por pares:
+    média com mediana (posição e simetria), desvio-padrão com coeficiente de variação
+    (dispersão absoluta e relativa) e IQR com os limites de Tukey (concentração central
+    e presença de valores extremos).
+  </p>
+  <p class="secao__texto">
+    O coeficiente de variação permite comparar a dispersão de variáveis em unidades
+    diferentes: valores até cerca de 15% indicam baixa variabilidade, de 15% a 30%
+    variabilidade moderada e acima de 30% alta variabilidade. A distância entre média e
+    mediana, por sua vez, antecipa a assimetria: quanto maior a diferença, menos a média
+    isolada representa o conjunto.
+  </p>
+
+  <h3 class="secao__subtitulo">Posição e dispersão</h3>
+  {{ tabela_descritivas(analise.descritivas) }}
+
+  <h3 class="secao__subtitulo">Precisão, forma e valores atípicos</h3>
+  {{ tabela_forma(analise.descritivas) }}
+
+  <h3 class="secao__subtitulo">Média ou mediana: leitura variável por variável</h3>
+  <p class="secao__texto">
+    O diagnóstico abaixo indica, para cada variável, qual medida de tendência central
+    representa melhor o conjunto e por quê. Ele sustenta a resposta à sexta questão
+    investigativa, na seção 11.
+  </p>
+  <details class="bloco-expansivel" id="leituras-descritivas">
+    <summary>Ver leitura das {{ analise.descritivas | length | int_br }} variáveis</summary>
+    <dl class="leituras">
+      {% for coluna, d in analise.descritivas.items() %}
+      {% if d.get('media_vs_mediana') %}
+      <div class="leituras__item">
+        <dt class="leituras__termo">{{ d.get('rotulo') or coluna }}</dt>
+        <dd class="leituras__texto">{{ d.media_vs_mediana }}</dd>
+      </div>
+      {% endif %}
+      {% endfor %}
+    </dl>
+  </details>
+</section>
+
+
+{# ---------------------------------------------------------- 4. distribuições #}
+<section class="secao" id="distribuicoes" aria-labelledby="titulo-distribuicoes">
+  <h2 class="secao__titulo" id="titulo-distribuicoes">4. Distribuições</h2>
+  <p class="secao__texto">
+    Os histogramas a seguir mostram como os registros se distribuem ao longo da escala de
+    cada variável: a altura de cada barra é o número de registros que caíram naquela
+    classe. É aqui que se vê a forma da distribuição — simétrica, assimétrica à direita
+    ou com cauda longa — e, portanto, se a média é ou não uma boa síntese do conjunto.
+  </p>
+  <p class="secao__texto">
+    A leitura prática: observe primeiro onde a média e a mediana caem em relação ao pico
+    das barras. Quando a média está deslocada à direita da mediana, há registros muito
+    altos empurrando o indicador para cima; a mediana, nesse caso, descreve melhor o dia
+    típico de produção. A faixa entre Q1 e Q3 contém a metade central dos registros e é a
+    referência mais estável para dimensionar metas.
+  </p>
+  {{ nota_marcadores() }}
+  {{ grade_graficos(graficos_por_secao.get('distribuicoes', [])) }}
+</section>
+
+
+{# ------------------------------------------------------------- 5. temporal #}
+<section class="secao" id="temporal" aria-labelledby="titulo-temporal">
+  <h2 class="secao__titulo" id="titulo-temporal">5. Evolução no tempo</h2>
+  <p class="secao__texto">
+    Os gráficos desta seção agregam os registros por mês ao longo dos
+    {{ analise.meta.n_meses | int_br }} meses observados, o que reduz o ruído diário e
+    deixa visível o comportamento de médio prazo. Volume de produção e produtividade
+    aparecem separados de propósito: produtos com ritmos de fabricação diferentes podem
+    somar volumes parecidos com eficiências muito distintas.
+  </p>
+  <p class="secao__texto">
+    Como ler: a área e a linha mostram o nível mês a mês, a média móvel de três meses
+    filtra oscilações pontuais e revela a tendência, e os marcadores horizontais situam
+    cada mês em relação ao comportamento médio de todo o período. Variações de um único
+    mês dentro da faixa de um desvio-padrão devem ser tratadas como flutuação normal, e
+    não como mudança de patamar.
+  </p>
+  {{ nota_marcadores() }}
+  {{ grade_graficos(graficos_por_secao.get('temporal', [])) }}
+</section>
+
+
+{# --------------------------------------------------------- 6. comparativos #}
+<section class="secao" id="comparativos" aria-labelledby="titulo-comparativos">
+  <h2 class="secao__titulo" id="titulo-comparativos">6. Comparativos por recorte</h2>
+  <p class="secao__texto">
+    Esta seção compara produto, turno, linha de produção e tipo de manutenção sob os
+    mesmos indicadores. Os gráficos de barras mostram o nível médio de cada grupo e os
+    boxplots mostram a dispersão interna: dois grupos podem ter a mesma média e
+    comportamentos completamente diferentes, e é a dispersão que distingue um processo
+    estável de um processo irregular.
+  </p>
+  <p class="secao__texto">
+    Como ler um boxplot: a caixa vai de Q1 a Q3 e contém metade dos registros, o traço
+    interno é a mediana, as hastes alcançam os valores ainda considerados regulares e os
+    pontos soltos são registros atípicos pelo critério de Tukey. Caixas altas indicam
+    produção pouco previsível naquele grupo.
+  </p>
+  {{ nota_marcadores() }}
+  {{ grade_graficos(graficos_por_secao.get('comparativos', [])) }}
+
+  <h3 class="secao__subtitulo">Tabelas de recorte</h3>
+  <p class="secao__texto">
+    Nas quatro tabelas abaixo, a taxa de defeitos de cada grupo é a razão entre o total
+    de unidades defeituosas e o total de unidades produzidas do grupo, e a produtividade
+    é a razão entre o total de unidades produzidas e o total de horas efetivas — nunca a
+    média das razões individuais, que daria peso igual a registros de volumes diferentes.
+  </p>
+  {{ tabela_recorte(analise.por_produto, 'produto', 'Produto',
+       'Indicadores de produção, qualidade, energia e logística por produto.',
+       'tabela-por-produto') }}
+  {{ tabela_recorte(analise.por_turno, 'turno', 'Turno',
+       'Indicadores por turno de trabalho. A coluna de coeficiente de variação responde à segunda questão investigativa.',
+       'tabela-por-turno') }}
+  {{ tabela_recorte(analise.por_linha, 'linha_producao', 'Linha de produção',
+       'Indicadores por linha de produção. A coluna de taxa de defeitos responde à terceira questão investigativa.',
+       'tabela-por-linha') }}
+  {{ tabela_recorte(analise.por_manutencao, 'tipo_manutencao', 'Tipo de manutenção',
+       'Indicadores por tipo de manutenção registrada, úteis para avaliar o efeito da manutenção preventiva sobre parada e defeitos.',
+       'tabela-por-manutencao') }}
+</section>
+
+
+{# ------------------------------------------------------------- 7. qualidade #}
+<section class="secao" id="qualidade" aria-labelledby="titulo-qualidade">
+  <h2 class="secao__titulo" id="titulo-qualidade">7. Qualidade da produção</h2>
+  <p class="secao__texto">
+    A qualidade é avaliada pela taxa de defeitos, calculada como unidades defeituosas
+    divididas por unidades produzidas. Os gráficos desta seção decompõem essa taxa por
+    linha de produção, por produto e por turno, e o gráfico de Pareto ordena os produtos
+    pela contribuição absoluta ao total de peças defeituosas.
+  </p>
+  <p class="secao__texto">
+    Como ler: no mapa de calor, tons mais escuros indicam taxa mais alta — a escala é
+    sequencial e comparável entre todas as células. No Pareto, as barras são a
+    contribuição de cada produto e a linha é o acumulado; o ponto em que a linha
+    atravessa os 80% identifica onde a ação corretiva tem maior retorno. Atenção à
+    diferença entre taxa alta e volume alto de defeitos: um produto com taxa menor pode
+    gerar mais peças defeituosas por produzir muito mais.
+  </p>
+  {{ nota_marcadores() }}
+  {{ grade_graficos(graficos_por_secao.get('qualidade', [])) }}
+</section>
+
+
+{# --------------------------------------------------------------- 8. energia #}
+<section class="secao" id="energia" aria-labelledby="titulo-energia">
+  <h2 class="secao__titulo" id="titulo-energia">8. Consumo de energia</h2>
+  <p class="secao__texto">
+    O consumo absoluto de energia acompanha o volume produzido e, por isso, isoladamente
+    diz pouco sobre eficiência. O indicador comparável é a energia por unidade, em
+    kWh por peça produzida, apresentado aqui por produto e confrontado com o volume de
+    produção na dispersão.
+  </p>
+  <p class="secao__texto">
+    Como ler a dispersão: cada ponto é um registro diário, e a nuvem crescente confirma
+    que mais produção consome mais energia. O que interessa são os pontos afastados do
+    corpo da nuvem — consumo alto com produção baixa —, que indicam perda de eficiência e
+    são investigados na seção 10.
+  </p>
+  {{ nota_marcadores() }}
+  {{ grade_graficos(graficos_por_secao.get('energia', [])) }}
+</section>
+
+
+{# -------------------------------------------------------------- 9. relações #}
+<section class="secao" id="relacoes" aria-labelledby="titulo-relacoes">
+  <h2 class="secao__titulo" id="titulo-relacoes">9. Relações entre variáveis</h2>
+  <p class="secao__texto">
+    Esta seção examina como as variáveis se movem em conjunto. A matriz de correlação usa
+    o coeficiente de Pearson, que varia de −1 a +1: tons de azul indicam associação
+    positiva, tons de vermelho associação negativa e o cinza central indica ausência de
+    associação linear. As dispersões que seguem abrem os pares de maior interesse
+    operacional.
+  </p>
+  <p class="secao__texto">
+    Como referência de intensidade: |r| abaixo de 0,3 é associação fraca, de 0,3 a 0,5
+    moderada, de 0,5 a 0,7 forte e acima de 0,7 muito forte. Uma ressalva indispensável:
+    correlação não demonstra causa. O coeficiente de Pearson também só captura relações
+    lineares, por isso cada par relevante é conferido visualmente na dispersão.
+  </p>
+  {{ nota_marcadores() }}
+  {{ grade_graficos(graficos_por_secao.get('relacoes', [])) }}
+
+  <h3 class="secao__subtitulo">Pares de maior associação</h3>
+  <div class="tabela-rolagem" role="region" aria-label="Tabela dos pares de maior correlação" tabindex="0">
+    <table class="tabela" id="tabela-correlacoes">
+      <caption class="tabela__legenda">
+        Pares de variáveis com maior correlação em módulo, entre as
+        {{ analise.correlacoes.colunas | length | int_br }} variáveis quantitativas
+        incluídas na matriz, com leitura interpretativa de cada par.
+      </caption>
+      <thead>
+        <tr>
+          <th scope="col">Variável A</th>
+          <th scope="col">Variável B</th>
+          <th scope="col">r de Pearson</th>
+          <th scope="col">Força</th>
+          <th scope="col">Leitura</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for d in analise.correlacoes.destaques %}
+        <tr>
+          <th scope="row">{{ rotulos.get(d.x, d.x) }}</th>
+          <td>{{ rotulos.get(d.y, d.y) }}</td>
+          <td class="num">{{ d.r | num(3) }}</td>
+          <td>{{ d.forca }}</td>
+          <td>{{ d.leitura }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+
+{# ------------------------------------------------------- 10. valores atípicos #}
+<section class="secao" id="atipicos" aria-labelledby="titulo-atipicos">
+  <h2 class="secao__titulo" id="titulo-atipicos">10. Valores atípicos no consumo de energia</h2>
+  <p class="secao__texto">
+    Um valor atípico é uma observação distante do padrão do conjunto. Ela não é
+    descartada automaticamente: pode ser erro de medição, condição operacional excepcional
+    ou falha real de equipamento, e a distinção exige conferir o registro. Esta seção
+    identifica os atípicos de consumo de energia, quantifica-os e lista cada caso para
+    verificação.
+  </p>
+
+  <div class="definicoes definicoes--metodo">
+    <article class="definicao">
+      <h3 class="definicao__titulo">Método de detecção</h3>
+      <p class="definicao__texto">{{ analise.outliers_energia.metodo }}</p>
+    </article>
+    <article class="definicao">
+      <h3 class="definicao__titulo">Limites aceitos</h3>
+      <p class="definicao__texto">
+        Inferior: {{ analise.outliers_energia.lim_inf | num(2) }} kWh.
+        Superior: {{ analise.outliers_energia.lim_sup | num(2) }} kWh.
+        Registros fora desse intervalo são sinalizados como atípicos.
+      </p>
+    </article>
+    <article class="definicao">
+      <h3 class="definicao__titulo">Ocorrências</h3>
+      <p class="definicao__texto">
+        {{ analise.outliers_energia.n | int_br }} registros atípicos
+        {%- if analise.meta.n_registros %},
+        equivalentes a {{ (analise.outliers_energia.n / analise.meta.n_registros) | pct(1) }}
+        dos {{ analise.meta.n_registros | int_br }} registros da base
+        {%- endif %}.
+      </p>
+    </article>
+    <article class="definicao">
+      <h3 class="definicao__titulo">Conferência com a coluna do CSV</h3>
+      <p class="definicao__texto">{{ analise.outliers_energia.coerencia_coluna_atipico }}</p>
+    </article>
+  </div>
+
+  <p class="secao__texto secao__texto--leitura">{{ analise.outliers_energia.leitura }}</p>
+
+  {{ nota_marcadores() }}
+  {{ grade_graficos(graficos_por_secao.get('atipicos', [])) }}
+
+  <h3 class="secao__subtitulo">Registros sinalizados</h3>
+  {% if analise.outliers_energia.registros %}
+  <div class="tabela-rolagem" role="region" aria-label="Tabela dos registros atípicos de energia" tabindex="0">
+    <table class="tabela tabela--densa" id="tabela-atipicos">
+      <caption class="tabela__legenda">
+        Registros com consumo de energia fora dos limites aceitos. A coluna
+        <em>z</em> indica a distância do valor em desvios-padrão da média, e a coluna
+        <em>Desvio</em> informa se o consumo ficou acima ou abaixo do esperado.
+      </caption>
+      <thead>
+        <tr>
+          <th scope="col">ID do registro</th>
+          <th scope="col">Data</th>
+          <th scope="col">Produto</th>
+          <th scope="col">Linha</th>
+          <th scope="col">Turno</th>
+          <th scope="col">Consumo (kWh)</th>
+          <th scope="col">Energia por unidade (kWh/un)</th>
+          <th scope="col">Unidades produzidas</th>
+          <th scope="col">z</th>
+          <th scope="col">Desvio</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in analise.outliers_energia.registros %}
+        <tr>
+          <th scope="row">{{ r.get('id_registro') or '—' }}</th>
+          <td>{{ r.get('data') | data_br }}</td>
+          <td>{{ r.get('produto') or '—' }}</td>
+          <td>{{ r.get('linha_producao') or '—' }}</td>
+          <td>{{ r.get('turno') or '—' }}</td>
+          <td class="num">{{ r.get('consumo_energia_kwh') | num(2) }}</td>
+          <td class="num">{{ r.get('energia_por_unidade') | num(3) }}</td>
+          <td class="num">{{ r.get('unidades_produzidas') | int_br }}</td>
+          <td class="num">{{ r.get('z') | num(2) }}</td>
+          <td>{{ r.get('tipo') | default('—', true) | capitalize }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="secao__aviso">
+    Nenhum registro ficou fora dos limites de consumo de energia pelo método aplicado.
+  </p>
+  {% endif %}
+</section>
+
+
+{# ------------------------------------------------- 11. questões investigativas #}
+<section class="secao" id="questoes" aria-labelledby="titulo-questoes">
+  <h2 class="secao__titulo" id="titulo-questoes">11. Questões investigativas</h2>
+  <p class="secao__texto">
+    As seis questões propostas no enunciado são respondidas abaixo. Cada bloco traz a
+    resposta direta em destaque, a justificativa com os números apurados, as evidências
+    que a sustentam e o link para o gráfico correspondente, de modo que qualquer
+    afirmação possa ser verificada na própria página.
+  </p>
+
+  <ol class="questoes">
+    {% for q in analise.questoes %}
+    <li class="questoes__item">
+      <article class="questao" id="questao-{{ q.n }}" aria-labelledby="questao-{{ q.n }}-titulo">
+        <h3 class="questao__titulo" id="questao-{{ q.n }}-titulo">
+          <span class="questao__numero">Questão {{ q.n }}</span>
+          <span class="questao__pergunta">{{ q.pergunta }}</span>
+        </h3>
+        <p class="questao__resposta-curta">{{ q.resposta_curta }}</p>
+        <p class="questao__resposta">{{ q.resposta }}</p>
+        {% if q.get('evidencias') %}
+        <h4 class="questao__subtitulo">Evidências</h4>
+        <ul class="questao__evidencias">
+          {% for e in q.evidencias %}
+          <li>{{ e }}</li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+        {% if q.get('grafico') %}
+        <p class="questao__apoio">
+          <a class="questao__link" href="#card-{{ q.grafico }}">Ver o gráfico que sustenta esta resposta</a>
+        </p>
+        {% endif %}
+      </article>
+    </li>
+    {% endfor %}
+  </ol>
+</section>
+
+
+{# ------------------------------------------------------------ 12. parecer #}
+<section class="secao" id="parecer" aria-labelledby="titulo-parecer">
+  <h2 class="secao__titulo" id="titulo-parecer">12. Parecer técnico</h2>
+  <p class="secao__texto">
+    O parecer consolida o que os dados sustentam, delimita o que eles não permitem
+    afirmar e converte o diagnóstico em recomendações acionáveis, cada uma com o
+    indicador que deve ser acompanhado para verificar o efeito da ação.
+  </p>
+
+  <h3 class="secao__subtitulo">Síntese</h3>
+  <div class="bloco bloco--sintese">
+    <p class="bloco__texto">{{ analise.parecer.sintese }}</p>
+  </div>
+
+  <h3 class="secao__subtitulo">Evidências que sustentam o parecer</h3>
+  <dl class="evidencias">
+    {% for e in analise.parecer.evidencias %}
+    <div class="evidencias__item">
+      <dt class="evidencias__termo">{{ e.titulo }}</dt>
+      <dd class="evidencias__texto">{{ e.texto }}</dd>
+    </div>
+    {% endfor %}
+  </dl>
+
+  <h3 class="secao__subtitulo">Limitações da análise</h3>
+  <p class="secao__texto">
+    Toda conclusão aqui apresentada é condicionada aos limites abaixo. Explicitá-los faz
+    parte do trabalho estatístico: delimita o alcance das afirmações e indica o que
+    precisaria ser coletado para avançar.
+  </p>
+  <ul class="limitacoes">
+    {% for item in analise.parecer.limitacoes %}
+    <li class="limitacoes__item">{{ item }}</li>
+    {% endfor %}
+  </ul>
+
+  <h3 class="secao__subtitulo">Recomendações</h3>
+  <ol class="recomendacoes">
+    {% for r in analise.parecer.recomendacoes %}
+    <li class="recomendacoes__item">
+      <article class="recomendacao recomendacao--{{ r.prioridade }}">
+        <h4 class="recomendacao__titulo">{{ r.titulo }}</h4>
+        <p class="recomendacao__prioridade">
+          Prioridade {{ r.prioridade | replace('media', 'média') }}
+        </p>
+        <p class="recomendacao__texto">{{ r.texto }}</p>
+        <p class="recomendacao__indicador">
+          <span class="recomendacao__indicador-rotulo">Indicador de acompanhamento:</span>
+          {{ r.indicador }}
+        </p>
+      </article>
+    </li>
+    {% endfor %}
+  </ol>
+</section>
+
+
+{# ---------------------------------------------------------- 13. código Python #}
+<section class="secao" id="codigo" aria-labelledby="titulo-codigo">
+  <h2 class="secao__titulo" id="titulo-codigo">13. Código Python utilizado</h2>
+  <p class="secao__texto">
+    Todo o relatório é gerado por código, sem edição manual de números: o programa lê o
+    CSV, converte os tipos, calcula as medidas, monta as séries dos gráficos e renderiza
+    esta página. Os arquivos abaixo são a íntegra do que foi executado, na ordem em que
+    participam do fluxo, e permitem reproduzir integralmente os resultados.
+  </p>
+  {% if codigo %}
+  <ul class="codigo__indice">
+    {% for c in codigo %}
+    <li><a href="#codigo-{{ loop.index }}">{{ c.arquivo }}</a></li>
+    {% endfor %}
+  </ul>
+  {% for c in codigo %}
+  <article class="codigo" id="codigo-{{ loop.index }}">
+    <h3 class="codigo__titulo">{{ c.arquivo }}</h3>
+    <pre class="codigo__bloco" tabindex="0" role="region" aria-label="Código-fonte de {{ c.arquivo }}"><code class="codigo__fonte linguagem-{{ c.linguagem }}">{{ c.fonte }}</code></pre>
+  </article>
+  {% endfor %}
+  {% else %}
+  <p class="secao__aviso">O código-fonte não foi incluído nesta geração do relatório.</p>
+  {% endif %}
+</section>
+
+
+{# ------------------------------------------------------------- 14. glossário #}
+<section class="secao" id="glossario" aria-labelledby="titulo-glossario">
+  <h2 class="secao__titulo" id="titulo-glossario">14. Glossário de variáveis</h2>
+  <p class="secao__texto">
+    Descrição de cada variável da base, com o tipo estatístico e a unidade de medida.
+    O glossário fecha o relatório e serve de referência para a leitura de todas as
+    tabelas e gráficos anteriores.
+  </p>
+  <div class="tabela-rolagem" role="region" aria-label="Glossário de variáveis" tabindex="0">
+    <table class="tabela" id="tabela-glossario">
+      <caption class="tabela__legenda">
+        As {{ analise.glossario | length | int_br }} variáveis da base de produção da
+        EletroTech, com descrição, tipo estatístico e unidade.
+      </caption>
+      <thead>
+        <tr>
+          <th scope="col">Variável</th>
+          <th scope="col">Rótulo</th>
+          <th scope="col">Descrição</th>
+          <th scope="col">Tipo</th>
+          <th scope="col">Unidade</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for v in analise.glossario %}
+        <tr>
+          <th scope="row"><code class="codigo-inline">{{ v.variavel }}</code></th>
+          <td>{{ v.rotulo }}</td>
+          <td>{{ v.descricao }}</td>
+          <td>{{ v.tipo }}</td>
+          <td>{{ v.get('unidade') or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+{% endblock %}

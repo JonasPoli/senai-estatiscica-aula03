@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="pt-BR" id="topo">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block titulo %}{{ titulo }}{% endblock %}</title>
+  <meta name="description" content="{{ subtitulo }}">
+  <meta name="author" content="{{ instituicao }}">
+  <meta name="color-scheme" content="light dark">
+  <link rel="stylesheet" href="static/css/estilo.css">
+  {% block head_extra %}{% endblock %}
+</head>
+<body>
+  <a class="pular" href="#conteudo">Pular para o conteúdo</a>
+
+  <header class="cabecalho" id="cabecalho">
+    <div class="envolve cabecalho__conteudo">
+      <div class="cabecalho__topo">
+        <p class="cabecalho__instituicao">{{ instituicao }}</p>
+        <button type="button" id="alternar-tema" class="botao botao--tema"
+                aria-label="Alternar entre tema claro e tema escuro">
+          <span class="botao--tema__icone" aria-hidden="true"></span>
+          <span class="botao--tema__texto">Tema</span>
+        </button>
+      </div>
+
+      <h1 class="cabecalho__titulo">{{ titulo }}</h1>
+      <p class="cabecalho__subtitulo">{{ subtitulo }}</p>
+
+      <dl class="cabecalho__ficha">
+        <div class="cabecalho__ficha-item">
+          <dt>Registros</dt>
+          <dd>{{ analise.meta.n_registros | int_br }}</dd>
+        </div>
+        <div class="cabecalho__ficha-item">
+          <dt>Variáveis</dt>
+          <dd>{{ analise.meta.n_variaveis | int_br }}</dd>
+        </div>
+        <div class="cabecalho__ficha-item">
+          <dt>Período</dt>
+          <dd>{{ analise.meta.periodo_inicio | data_br }} a {{ analise.meta.periodo_fim | data_br }}</dd>
+        </div>
+        <div class="cabecalho__ficha-item">
+          <dt>Meses observados</dt>
+          <dd>{{ analise.meta.n_meses | int_br }}</dd>
+        </div>
+        <div class="cabecalho__ficha-item">
+          <dt>Gráficos</dt>
+          <dd>{{ graficos | length | int_br }}</dd>
+        </div>
+        <div class="cabecalho__ficha-item">
+          <dt>Medições ausentes</dt>
+          <dd>{{ (analise.meta.total_faltantes - analise.meta.faltantes.get('ordem_atipico', 0)) | int_br }}</dd>
+        </div>
+      </dl>
+    </div>
+  </header>
+
+  <nav class="navegacao" id="navegacao" aria-label="Seções do relatório">
+    <div class="envolve navegacao__lista">
+      {% for secao in secoes %}
+      <a class="navegacao__item" href="#{{ secao.id }}">{{ secao.titulo }}</a>
+      {% endfor %}
+    </div>
+  </nav>
+
+  <main id="conteudo" class="conteudo envolve">
+    {% block conteudo %}{% endblock %}
+  </main>
+
+  <footer class="rodape">
+    <div class="envolve rodape__conteudo">
+      <p class="rodape__linha">
+        {{ titulo }} &middot; {{ instituicao }} &middot;
+        relatório gerado em {{ gerado_em | data_br('%d/%m/%Y às %H:%M') }}.
+      </p>
+      <p class="rodape__fonte">
+        Fonte dos dados: base de produção da EletroTech Solutions S.A. (arquivo CSV do
+        projeto), com {{ analise.meta.n_registros | int_br }} registros e
+        {{ analise.meta.n_variaveis | int_br }} variáveis. Empresa e dados são
+        fictícios, criados para fins didáticos.
+      </p>
+      <p class="rodape__fonte">
+        Página única, autocontida e offline: os gráficos são desenhados no navegador a
+        partir do JSON embutido neste documento.
+      </p>
+    </div>
+  </footer>
+
+  <button type="button" id="voltar-topo" class="voltar-topo"
+          aria-label="Voltar ao topo da página">
+    <span class="voltar-topo__icone" aria-hidden="true"></span>
+    <span class="voltar-topo__texto">Topo</span>
+  </button>
+
+  <script type="application/json" id="dados-graficos">{{ dados_graficos | safe }}</script>
+  <script type="application/json" id="dados-meta">{{ dados_meta | safe }}</script>
+  <script src="static/vendor/echarts.min.js"></script>
+  <script src="static/js/app.js"></script>
+  {% block scripts_extra %}{% endblock %}
+</body>
+</html>

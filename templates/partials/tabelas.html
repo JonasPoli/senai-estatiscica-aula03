@@ -1,0 +1,209 @@
+{#
+  Macros de tabela reaproveitados pelas seções do relatório.
+
+  Convenções:
+  - toda tabela tem `<caption>` e `scope` em todos os `<th>`;
+  - células numéricas recebem a classe `num` (alinhamento à direita e
+    `tabular-nums` vindos do CSS);
+  - tabelas largas vão dentro de `.tabela-rolagem`, que é uma região focável
+    para quem navega por teclado.
+#}
+
+{#  Formatação de um valor conforme o campo `formato` do contrato.  #}
+{% macro num_fmt(valor, formato, casas=2) -%}
+{%- if valor is none -%}
+—
+{%- elif formato == 'int' -%}
+{{ valor | int_br }}
+{%- elif formato == 'pct' -%}
+{{ valor | pct(2) }}
+{%- else -%}
+{{ valor | num(casas) }}
+{%- endif -%}
+{%- endmacro %}
+
+
+{#
+  Tabela principal de medidas descritivas: posição e dispersão.
+  `descritivas` é o dict `analise.descritivas` (chave = nome da coluna).
+#}
+{% macro tabela_descritivas(descritivas) -%}
+<div class="tabela-rolagem" role="region" aria-label="Tabela de medidas de posição e dispersão" tabindex="0">
+  <table class="tabela tabela--densa" id="tabela-descritivas">
+    <caption class="tabela__legenda">
+      Medidas de posição e dispersão por variável quantitativa. A taxa de defeitos
+      é apresentada como fração (0 a 1); as demais variáveis seguem a unidade
+      indicada na coluna <em>Unidade</em>. O coeficiente de variação (CV) é a razão
+      entre desvio-padrão e média, apresentada em percentual.
+    </caption>
+    <thead>
+      <tr>
+        <th scope="col" class="tabela__coluna-fixa">Variável</th>
+        <th scope="col">Unidade</th>
+        <th scope="col">n</th>
+        <th scope="col">Faltantes</th>
+        <th scope="col">Média</th>
+        <th scope="col">Mediana</th>
+        <th scope="col">Moda</th>
+        <th scope="col">Mínimo</th>
+        <th scope="col">Máximo</th>
+        <th scope="col">Amplitude</th>
+        <th scope="col">Q1</th>
+        <th scope="col">Q2</th>
+        <th scope="col">Q3</th>
+        <th scope="col">IQR</th>
+        <th scope="col">Variância</th>
+        <th scope="col">Desvio-padrão</th>
+        <th scope="col">CV</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for coluna, d in descritivas.items() %}
+      {% set casas = 4 if coluna == 'taxa_defeitos' else (3 if coluna == 'producao_relativa' else 2) %}
+      <tr>
+        <th scope="row" class="tabela__coluna-fixa">{{ d.get('rotulo') or coluna }}</th>
+        <td>{{ d.get('unidade') or '—' }}</td>
+        <td class="num">{{ d.n | int_br }}</td>
+        <td class="num">{{ d.get('faltantes') | default(0, true) | int_br }}</td>
+        <td class="num">{{ d.media | num(casas) }}</td>
+        <td class="num">{{ d.mediana | num(casas) }}</td>
+        <td class="num">
+          {% if d.get('moda') is not none %}
+          {{ d.moda | num(casas) }}{% if d.get('modas') and d.modas | length > 1 %}<span class="marca-nota" title="Distribuição multimodal">*</span>{% endif %}
+          {% else %}
+          —
+          {% endif %}
+        </td>
+        <td class="num">{{ d.minimo | num(casas) }}</td>
+        <td class="num">{{ d.maximo | num(casas) }}</td>
+        <td class="num">{{ d.amplitude | num(casas) }}</td>
+        <td class="num">{{ d.q1 | num(casas) }}</td>
+        <td class="num">{{ d.q2 | num(casas) }}</td>
+        <td class="num">{{ d.q3 | num(casas) }}</td>
+        <td class="num">{{ d.iqr | num(casas) }}</td>
+        <td class="num">{{ d.variancia | num(casas) }}</td>
+        <td class="num">{{ d.desvio_padrao | num(casas) }}</td>
+        <td class="num">{% if d.get('coef_variacao') is not none %}{{ d.coef_variacao | pct(1) }}{% else %}—{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<p class="tabela__nota">
+  O asterisco na coluna <em>Moda</em> indica variável com mais de um valor modal;
+  nesse caso foi exibido o menor deles.
+</p>
+{%- endmacro %}
+
+
+{#
+  Tabela complementar: precisão da estimativa, forma da distribuição e
+  contagem de valores atípicos pelo critério de Tukey.
+#}
+{% macro tabela_forma(descritivas) -%}
+<div class="tabela-rolagem" role="region" aria-label="Tabela de precisão, forma e valores atípicos" tabindex="0">
+  <table class="tabela tabela--densa" id="tabela-forma">
+    <caption class="tabela__legenda">
+      Precisão da média (erro-padrão e intervalo de confiança de 95%), forma da
+      distribuição (assimetria e curtose) e valores atípicos pelo critério de
+      Tukey, com limites iguais a Q1 − 1,5·IQR e Q3 + 1,5·IQR.
+    </caption>
+    <thead>
+      <tr>
+        <th scope="col" class="tabela__coluna-fixa">Variável</th>
+        <th scope="col">Erro-padrão</th>
+        <th scope="col">IC 95% (inferior)</th>
+        <th scope="col">IC 95% (superior)</th>
+        <th scope="col">Assimetria</th>
+        <th scope="col">Curtose</th>
+        <th scope="col">Limite inferior</th>
+        <th scope="col">Limite superior</th>
+        <th scope="col">Atípicos (n)</th>
+        <th scope="col">Atípicos (%)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for coluna, d in descritivas.items() %}
+      {% set casas = 4 if coluna == 'taxa_defeitos' else (3 if coluna == 'producao_relativa' else 2) %}
+      <tr>
+        <th scope="row" class="tabela__coluna-fixa">{{ d.get('rotulo') or coluna }}</th>
+        <td class="num">{% if d.get('erro_padrao') is not none %}{{ d.erro_padrao | num(casas) }}{% else %}—{% endif %}</td>
+        {% if d.get('ic95') %}
+        <td class="num">{{ d.ic95[0] | num(casas) }}</td>
+        <td class="num">{{ d.ic95[1] | num(casas) }}</td>
+        {% else %}
+        <td class="num">—</td>
+        <td class="num">—</td>
+        {% endif %}
+        <td class="num">{% if d.get('assimetria') is not none %}{{ d.assimetria | num(3) }}{% else %}—{% endif %}</td>
+        <td class="num">{% if d.get('curtose') is not none %}{{ d.curtose | num(3) }}{% else %}—{% endif %}</td>
+        <td class="num">{% if d.get('lim_inf') is not none %}{{ d.lim_inf | num(casas) }}{% else %}—{% endif %}</td>
+        <td class="num">{% if d.get('lim_sup') is not none %}{{ d.lim_sup | num(casas) }}{% else %}—{% endif %}</td>
+        <td class="num">{{ d.get('n_outliers') | default(0, true) | int_br }}</td>
+        <td class="num">
+          {%- if d.n -%}
+          {{ (d.get('n_outliers') | default(0, true) / d.n) | pct(1) }}
+          {%- else -%}
+          —
+          {%- endif -%}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{%- endmacro %}
+
+
+{#
+  Tabela de recorte (por produto, turno, linha ou tipo de manutenção).
+  `linhas` é a lista achatada do contrato; `chave` é o campo que identifica
+  o grupo; `cabecalho` é o rótulo da primeira coluna.
+#}
+{% macro tabela_recorte(linhas, chave, cabecalho, legenda, id_tabela) -%}
+<div class="tabela-rolagem" role="region" aria-label="Tabela de indicadores por {{ cabecalho | lower }}" tabindex="0">
+  <table class="tabela tabela--densa" id="{{ id_tabela }}">
+    <caption class="tabela__legenda">{{ legenda }}</caption>
+    <thead>
+      <tr>
+        <th scope="col" class="tabela__coluna-fixa">{{ cabecalho }}</th>
+        <th scope="col">Registros</th>
+        <th scope="col">Unidades (total)</th>
+        <th scope="col">Unidades (média)</th>
+        <th scope="col">Unidades (mediana)</th>
+        <th scope="col">Unidades (DP)</th>
+        <th scope="col">Unidades (CV)</th>
+        <th scope="col">Produtividade média (un/h)</th>
+        <th scope="col">Produtividade (DP)</th>
+        <th scope="col">Horas efetivas (total)</th>
+        <th scope="col">Taxa de defeitos</th>
+        <th scope="col">Energia por unidade (kWh/un)</th>
+        <th scope="col">Parada média (h)</th>
+        <th scope="col">Resíduo por unidade (kg/un)</th>
+        <th scope="col">Entregas no prazo (%)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for l in linhas %}
+      <tr>
+        <th scope="row" class="tabela__coluna-fixa">{{ l.get(chave) or '—' }}</th>
+        <td class="num">{{ l.get('n') | default(0, true) | int_br }}</td>
+        <td class="num">{{ l.get('unidades_total') | int_br }}</td>
+        <td class="num">{{ l.get('unidades_media') | num(1) }}</td>
+        <td class="num">{{ l.get('unidades_mediana') | num(1) }}</td>
+        <td class="num">{{ l.get('unidades_dp') | num(2) }}</td>
+        <td class="num">{% if l.get('unidades_cv') is not none %}{{ l.unidades_cv | pct(1) }}{% else %}—{% endif %}</td>
+        <td class="num">{{ l.get('produtividade_media') | num(2) }}</td>
+        <td class="num">{{ l.get('produtividade_dp') | num(2) }}</td>
+        <td class="num">{{ l.get('horas_efetivas_total') | num(1) }}</td>
+        <td class="num">{% if l.get('taxa_defeitos') is not none %}{{ l.taxa_defeitos | pct(2) }}{% else %}—{% endif %}</td>
+        <td class="num">{{ l.get('energia_por_unidade') | num(3) }}</td>
+        <td class="num">{{ l.get('parada_media') | num(2) }}</td>
+        <td class="num">{{ l.get('residuo_por_unidade') | num(3) }}</td>
+        <td class="num">{{ l.get('entregas_prazo') | num(1) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{%- endmacro %}
